@@ -70,12 +70,23 @@ public static class LintingExtensions
             }
         
             var appDir = execAnnotation.WorkingDirectory;
-            return Task.FromResult<IEnumerable<PipelineStep>>(lintingCommands.Select(lintCommand => new PipelineStep
-            {
-                Name = $"lint-{lintCommand.name}-{resource.Name}",
-                Action = async (ctx) => await RunProcess(lintCommand.command, string.Join(" ", lintCommand.args), appDir, logger),
-                RequiredBySteps = ["lint"]
-            }));
+            return Task.FromResult<IEnumerable<PipelineStep>>([
+                new PipelineStep
+                {
+                    Name = $"lint-{resource.Name}",
+                    Action = async (ctx) =>
+                    {
+                        logger.LogInformation("Linting for {resourceName} completed successfully", resource.Name);
+                    },
+                    RequiredBySteps = ["lint"]
+                },
+                ..lintingCommands.Select(lintCommand => new PipelineStep
+                {
+                    Name = $"lint-{lintCommand.name}-{resource.Name}",
+                    Action = async (ctx) => await RunProcess(lintCommand.command, string.Join(" ", lintCommand.args), appDir, logger),
+                    RequiredBySteps = [$"lint-{resource.Name}"]
+                })
+            ]);
         });
     }
 

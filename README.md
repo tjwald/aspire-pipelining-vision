@@ -8,11 +8,23 @@ In this example repo, I am adding linting support, but this could easily be used
 
 
 # Usage
-
-You can run: 
+## Entire Stack
 ```bash
 aspire do lint
 ```
 
-and you will see this output:
-![img.png](docs/images/img.png)
+![entire-stack-lint.png](docs/images/entire-stack-lint.png)
+
+## Only frontend:
+```bash
+aspire do lint-frontend
+```
+
+![frontend-lint.png](docs/images/frontend-lint.png)
+
+## Only backend:
+```bash
+aspire do lint-app
+```
+
+![app-lint.png](docs/images/app-lint.png)
