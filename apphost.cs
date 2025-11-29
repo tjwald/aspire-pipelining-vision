@@ -13,6 +13,7 @@ using Aspire.Hosting.Python;
 using Aspire.Hosting.JavaScript;
 
 var builder = DistributedApplication.CreateBuilder(args)
+    .WithInstallation()
     .WithLinting();
 
 
@@ -24,6 +25,7 @@ var app = builder.AddUvicornApp("app", "./app", "main:app")
     .WithReference(cache)
     .WaitFor(cache)
     .WithHttpHealthCheck("/health")
+    .WithUvInstallationStep("./app")
     .WithUvLintingSteps([
         ("ruff", ["check"]),
         ("mypy", ["."])
@@ -32,12 +34,76 @@ var app = builder.AddUvicornApp("app", "./app", "main:app")
 var frontend = builder.AddViteApp("frontend", "./frontend")
     .WithReference(app)
     .WaitFor(app)
+    .WithInstallationStep()
     .WithLintingStep();
 
 app.PublishWithContainerFiles(frontend, "./static");
 
 
 builder.Build().Run();
+
+
+public static class InstallationsExtensions
+{
+    public static IDistributedApplicationBuilder WithInstallation(this IDistributedApplicationBuilder builder)
+    {
+        builder.Pipeline.AddStep("install", context =>
+        {
+            context.Logger.LogInformation("Installation step completed successfully.");
+            return Task.CompletedTask;
+        });
+
+        return builder;
+    }
+
+    public static IResourceBuilder<PythonAppResource> WithUvInstallationStep(this IResourceBuilder<PythonAppResource> builder, string workingDirectory) => builder.WithUvInstallationStep(workingDirectory, []);
+
+    public static IResourceBuilder<PythonAppResource> WithUvInstallationStep(this IResourceBuilder<PythonAppResource> builder, string workingDirectory, string[] args)
+    {
+        return builder.WithPipelineStepFactory(factoryContext =>
+        {
+            var resource = factoryContext.Resource;
+            var logger = factoryContext.PipelineContext.Logger;
+            return new PipelineStep
+                {
+                    Name = $"install-{resource.Name}",
+                    Action = async (ctx) => await LintingExtensions.RunProcess("uv", string.Join(" ", ["sync", ..args]), workingDirectory, logger),
+                    RequiredBySteps = ["install"]
+                };
+        });
+    }
+
+    public static IResourceBuilder<JavaScriptAppResource> WithInstallationStep(this IResourceBuilder<JavaScriptAppResource> builder) => builder.WithInstallationStep([]);
+
+    public static IResourceBuilder<JavaScriptAppResource> WithInstallationStep(this IResourceBuilder<JavaScriptAppResource> builder, string[] args)
+    {
+        return builder.WithPipelineStepFactory(factoryContext =>
+        {
+            var resource = factoryContext.Resource;
+            var logger = factoryContext.PipelineContext.Logger;
+
+            if (!resource.TryGetLastAnnotation<ExecutableAnnotation>(out var execAnnotation) || string.IsNullOrEmpty(execAnnotation.WorkingDirectory))
+            {
+                logger.LogWarning("Could not find working directory for {resourceName}", resource.Name);
+                throw new InvalidOperationException($"Could not find working directory for {resource.Name}");
+            }
+                
+            var frontendDir = execAnnotation.WorkingDirectory;
+            string packageManager = "npm";
+            if (resource.TryGetLastAnnotation<JavaScriptPackageManagerAnnotation>(out var packageManagerAnnotation))
+            {
+                packageManager = packageManagerAnnotation.ExecutableName;
+            }
+
+            return new PipelineStep
+                {
+                    Name = $"install-{resource.Name}",
+                    Action = async (ctx) => await LintingExtensions.RunProcess(packageManager, "install", frontendDir, logger),
+                    RequiredBySteps = ["install"]
+                };
+        });
+    }
+}
 
 
 public static class LintingExtensions
@@ -78,7 +144,8 @@ public static class LintingExtensions
                     {
                         logger.LogInformation("Linting for {resourceName} completed successfully", resource.Name);
                     },
-                    RequiredBySteps = ["lint"]
+                    RequiredBySteps = ["lint"],
+                    DependsOnSteps = [$"install-{resource.Name}"]
                 },
                 ..lintingCommands.Select(lintCommand => new PipelineStep
                 {
@@ -122,9 +189,10 @@ public static class LintingExtensions
                         "pnpm" or "npm" or _ => "run lint --silent",
                     };
 
-                    await LintingExtensions.RunProcess(packageManager, pkgArgs, frontendDir, logger);
+                    await RunProcess(packageManager, pkgArgs, frontendDir, logger);
                 },
-                RequiredBySteps = ["lint"]
+                RequiredBySteps = ["lint"],
+                DependsOnSteps = [$"install-{resource.Name}"]
             };
         });
     }
