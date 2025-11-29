@@ -13,18 +13,18 @@ In this example repo, I am adding linting support, but this could easily be used
 aspire do lint
 ```
 
-![entire-stack-lint.png](docs/images/entire-stack-lint.png)
+![entire-stack-lint](docs/images/entire-stack-lint.png)
 
 ## Only frontend:
 ```bash
 aspire do lint-frontend
 ```
 
-![frontend-lint.png](docs/images/frontend-lint.png)
+![frontend-lint](docs/images/frontend-lint.png)
 
 ## Only backend:
 ```bash
 aspire do lint-app
 ```
 
-![app-lint.png](docs/images/app-lint.png)
+![app-lint](docs/images/app-lint.png)
