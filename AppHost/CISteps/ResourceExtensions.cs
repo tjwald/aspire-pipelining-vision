@@ -17,16 +17,10 @@ internal static class ResourceExtensions
             }
         }
 
-        public string PackageManager
-        {
-            get 
-            {
-                if (resource.TryGetLastAnnotation<JavaScriptPackageManagerAnnotation>(out var packageManagerAnnotation))
-                {
-                    return packageManagerAnnotation.ExecutableName;
-                }
-                throw new InvalidOperationException($"Could not find package manager for {resource.Name}");
-            }
-        }
+        // Since resources lose their typing in pipeline - I have to put it in a generic extension and not typed to a JavaScript app
+        public string PackageManager 
+            => resource.TryGetLastAnnotation<JavaScriptPackageManagerAnnotation>(out var packageManagerAnnotation) 
+                ? packageManagerAnnotation.ExecutableName 
+                : throw new InvalidOperationException($"Could not find package manager for {resource.Name}");
     }
 }

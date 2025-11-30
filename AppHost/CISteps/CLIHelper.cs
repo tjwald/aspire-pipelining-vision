@@ -2,9 +2,9 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 
-namespace AppHost;
+namespace AppHost.CISteps;
 
-public static class CLIHelper
+internal static class CLIHelper
 {
     /// Helper to run external processes and stream output into pipeline logs
     public static async Task RunProcess(string fileName, string args, string workingDir, ILogger? logger = null)
