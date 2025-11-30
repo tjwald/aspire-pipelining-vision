@@ -1,8 +1,8 @@
 using AppHost.CISteps;
 
 var builder = DistributedApplication.CreateBuilder(args)
-    .WithCISteps();  // out of the box
-
+    .WithCISteps()   // out of the box
+    .AddUvPythonSetup(uvVersion: "0.9.11");
 
 var cache = builder.AddRedis("cache");
 

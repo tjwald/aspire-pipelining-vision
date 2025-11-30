@@ -1,4 +1,5 @@
-﻿using Aspire.Hosting.Pipelines;
+﻿using System.Runtime.InteropServices;
+using Aspire.Hosting.Pipelines;
 using Aspire.Hosting.Python;
 using Microsoft.Extensions.Logging;
 
@@ -6,6 +7,75 @@ namespace AppHost.CISteps;
 
 public static class PythonCIStepsExtensions
 {
+    extension(IDistributedApplicationBuilder builder)
+    {
+        public IDistributedApplicationBuilder AddUvPythonSetup(string? uvVersion = null)
+        {
+            builder.Pipeline.AddStep($"{WellKnownCIStepNames.Setup}-uv-python", async stepContext =>
+            {
+                try
+                {
+                    var output = await CLIHelper.RunProcessWithOutput("uv", "--version", ".");
+                    if (uvVersion is not null)
+                    {
+                        var uvVersionParts = output.Split();
+                        if (uvVersionParts[1] != uvVersion)
+                        {
+                            stepContext.Logger.LogWarning("Already installed uv with version: {uvVersion}. Changing existing versions not supported yet", uvVersionParts[1]);
+                        }
+                        else
+                        {
+                            stepContext.Logger.LogInformation("Already installed uv with version: {uvVersion}", uvVersionParts[1]);
+                        }
+                        return;
+                    }
+                }
+                catch (Exception e)
+                {
+                    stepContext.Logger.LogInformation("uv not installed - installing version: {uvVersion}", uvVersion ?? "latest");
+                }
+
+                string command, args;
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    command = "powershell";
+                    if (uvVersion is not null)
+                    {
+                        args = $"-ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/{uvVersion}/install.ps1 | iex\"";
+                    }
+                    else
+                    {
+                        args = "-ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\"";
+                    }
+                }
+                else
+                {
+                    command = "curl";
+                    if (uvVersion is not null)
+                    {
+                        args = $"-LsSf https://astral.sh/uv/{uvVersion}/install.sh | sh";
+                    }
+                    else
+                    {
+                        args = "-LsSf https://astral.sh/uv/install.sh | sh";
+                    }
+                }
+
+                try
+                {
+                    await CLIHelper.RunProcess(command, args, ".", stepContext.Logger);
+                }
+                catch (Exception e)
+                {
+                    stepContext.Logger.LogError(e, "Couldn't install uv with version: {uvVersion}", uvVersion ?? "latest");
+                    throw;
+                }
+                
+            }, requiredBy: WellKnownCIStepNames.Setup);
+            return builder;
+        }
+    }
+    
     extension(IResourceBuilder<PythonAppResource> builder)
     {
         public IResourceBuilder<PythonAppResource> WithUvInstallationStep() => builder.WithUvInstallationStep([]);

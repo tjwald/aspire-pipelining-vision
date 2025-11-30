@@ -6,6 +6,17 @@ public static class CIStepExtensions
 {
     extension(IDistributedApplicationBuilder builder)
     {
+        public IDistributedApplicationBuilder WithSetup()
+        {
+            builder.Pipeline.AddStep(WellKnownCIStepNames.Setup, context =>
+            {
+                context.Logger.LogInformation("Setup step completed successfully.");
+                return Task.CompletedTask;
+            });
+
+            return builder;
+        }
+        
         public IDistributedApplicationBuilder WithInstallation()
         {
             builder.Pipeline.AddStep(WellKnownCIStepNames.Install, context =>
@@ -40,6 +51,7 @@ public static class CIStepExtensions
         public IDistributedApplicationBuilder WithCISteps()
         {
             return builder
+                .WithSetup()
                 .WithInstallation()
                 .WithLinting()
                 .WithTesting();
