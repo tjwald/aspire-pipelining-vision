@@ -17,9 +17,9 @@ public static class JavaScriptCIStepsExtensions
 
                 return new PipelineStep
                 {
-                    Name = $"install-{resource.Name}",
-                    Action = async ctx => await CLIHelper.RunProcess(resource.PackageManager, "install", resource.WorkingDirectory, ctx.Logger),
-                    RequiredBySteps = ["install"]
+                    Name = $"{WellKnownCIStepNames.Install}-{resource.Name}",
+                    Action = ctx => CLIHelper.RunProcess(resource.PackageManager, "install", resource.WorkingDirectory, ctx.Logger),
+                    RequiredBySteps = [WellKnownCIStepNames.Install]
                 };
             });
         }
@@ -34,7 +34,7 @@ public static class JavaScriptCIStepsExtensions
                 string packageManager = resource.PackageManager;
                 return new PipelineStep
                 {
-                    Name = $"lint-{resource.Name}",
+                    Name = $"{WellKnownCIStepNames.Lint}-{resource.Name}",
                     Action = async ctx =>
                     {
                         // prefer the resource's package-manager annotation when available (fallback: lockfile detection)
@@ -47,8 +47,8 @@ public static class JavaScriptCIStepsExtensions
 
                         await CLIHelper.RunProcess(packageManager, pkgArgs, frontendDir, ctx.Logger);
                     },
-                    RequiredBySteps = ["lint"],
-                    DependsOnSteps = [$"install-{resource.Name}"]
+                    RequiredBySteps = [WellKnownCIStepNames.Lint],
+                    DependsOnSteps = [$"{WellKnownCIStepNames.Install}-{resource.Name}"]
                 };
             });
         }

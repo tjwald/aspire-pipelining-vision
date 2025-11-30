@@ -18,9 +18,9 @@ public static class PythonCIStepsExtensions
         
                 return new PipelineStep
                 {
-                    Name = $"install-{resource.Name}",
+                    Name = $"{WellKnownCIStepNames.Install}-{resource.Name}",
                     Action = async ctx => await CLIHelper.RunProcess("uv", string.Join(" ", ["sync", ..args]), resource.WorkingDirectory, ctx.Logger),
-                    RequiredBySteps = ["install"]
+                    RequiredBySteps = [WellKnownCIStepNames.Install]
                 };
             });
         }
@@ -40,19 +40,19 @@ public static class PythonCIStepsExtensions
                 return Task.FromResult<IEnumerable<PipelineStep>>([
                     new PipelineStep
                     {
-                        Name = $"lint-{resource.Name}",
+                        Name = $"{WellKnownCIStepNames.Lint}-{resource.Name}",
                         Action = async ctx =>
                         {
                             ctx.Logger.LogInformation("Linting for {resourceName} completed successfully", resource.Name);
                         },
-                        RequiredBySteps = ["lint"],
-                        DependsOnSteps = [$"install-{resource.Name}"]
+                        RequiredBySteps = [WellKnownCIStepNames.Lint],
+                        DependsOnSteps = [$"{WellKnownCIStepNames.Install}-{resource.Name}"]
                     },
                     ..lintingCommands.Select(lintCommand => new PipelineStep
                     {
-                        Name = $"lint-{lintCommand.name}-{resource.Name}",
+                        Name = $"{WellKnownCIStepNames.Lint}-{lintCommand.name}-{resource.Name}",
                         Action = async ctx => await CLIHelper.RunProcess(lintCommand.command, string.Join(" ", lintCommand.args), appDir, ctx.Logger),
-                        RequiredBySteps = [$"lint-{resource.Name}"]
+                        RequiredBySteps = [$"{WellKnownCIStepNames.Lint}-{resource.Name}"]
                     })
                 ]);
             });
@@ -69,20 +69,21 @@ public static class PythonCIStepsExtensions
                 return Task.FromResult<IEnumerable<PipelineStep>>([
                     new PipelineStep
                     {
-                        Name = $"test-{resource.Name}",
-                        Action = async (ctx) =>
+                        Name = $"{WellKnownCIStepNames.Test}-{resource.Name}",
+                        Action = ctx =>
                         {
-                            logger.LogInformation("Testing for {resourceName} completed successfully", resource.Name);
+                            ctx.Logger.LogInformation("Testing for {resourceName} completed successfully", resource.Name);
+                            return Task.CompletedTask;
                         },
-                        RequiredBySteps = ["test"]
+                        RequiredBySteps = [WellKnownCIStepNames.Test]
                     },
                     ..testingCommands.Select(testCommand =>
                         new PipelineStep
                         {
-                            Name = $"test-{testCommand.name}-{resource.Name}",
-                            Action = async (ctx) => await CLIHelper.RunProcess("uv", string.Join(" ", ["run", testCommand.command, ..testCommand.args]), appDir, logger),
-                            DependsOnSteps = [$"install-{resource.Name}"],
-                            RequiredBySteps = [$"test-{resource.Name}"]
+                            Name = $"{WellKnownCIStepNames.Test}-{testCommand.name}-{resource.Name}",
+                            Action = ctx => CLIHelper.RunProcess("uv", string.Join(" ", ["run", testCommand.command, ..testCommand.args]), appDir, ctx.Logger),
+                            DependsOnSteps = [$"{WellKnownCIStepNames.Install}-{resource.Name}"],
+                            RequiredBySteps = [$"{WellKnownCIStepNames.Test}-{resource.Name}"]
                         })
                 ]);
             });
