@@ -1,0 +1,18 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.0.0">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>8249b43d-bf12-427b-90bd-c9fee4d722c9</UserSecretsId>
+    <NoWarn>$(NoWarn);ASPIREPIPELINES001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.0.1"/>
+    <PackageReference Include="Aspire.Hosting.Python" Version="13.0.1"/>
+    <PackageReference Include="Aspire.Hosting.Redis" Version="13.0.1"/>
+  </ItemGroup>
+  
+</Project>

@@ -14,7 +14,8 @@ using Aspire.Hosting.JavaScript;
 
 var builder = DistributedApplication.CreateBuilder(args)
     .WithInstallation()
-    .WithLinting();
+    .WithLinting()
+    .WithTesting();
 
 
 var cache = builder.AddRedis("cache");
@@ -25,10 +26,13 @@ var app = builder.AddUvicornApp("app", "./app", "app.main:app")
     .WithReference(cache)
     .WaitFor(cache)
     .WithHttpHealthCheck("/health")
-    .WithUvInstallationStep("./app", ["--all-groups"])
+    .WithUvInstallationStep(["--all-groups"])
     .WithUvLintingSteps([
         ("ruff", ["check"]),
         ("mypy", ["."])
+    ])
+    .WithUvTestingStep([
+        ("unit", "pytest", ["-v", "tests/unit"])
     ]);
 
 var frontend = builder.AddViteApp("frontend", "./frontend")
@@ -56,18 +60,19 @@ public static class InstallationsExtensions
         return builder;
     }
 
-    public static IResourceBuilder<PythonAppResource> WithUvInstallationStep(this IResourceBuilder<PythonAppResource> builder, string workingDirectory) => builder.WithUvInstallationStep(workingDirectory, []);
+    public static IResourceBuilder<PythonAppResource> WithUvInstallationStep(this IResourceBuilder<PythonAppResource> builder) => builder.WithUvInstallationStep([]);
 
-    public static IResourceBuilder<PythonAppResource> WithUvInstallationStep(this IResourceBuilder<PythonAppResource> builder, string workingDirectory, string[] args)
+    public static IResourceBuilder<PythonAppResource> WithUvInstallationStep(this IResourceBuilder<PythonAppResource> builder, string[] args)
     {
         return builder.WithPipelineStepFactory(factoryContext =>
         {
             var resource = factoryContext.Resource;
             var logger = factoryContext.PipelineContext.Logger;
+        
             return new PipelineStep
                 {
                     Name = $"install-{resource.Name}",
-                    Action = async (ctx) => await LintingExtensions.RunProcess("uv", string.Join(" ", ["sync", ..args]), workingDirectory, logger),
+                    Action = async (ctx) => await LintingExtensions.RunProcess("uv", string.Join(" ", ["sync", ..args]), resource.WorkingDirectory, logger),
                     RequiredBySteps = ["install"]
                 };
         });
@@ -82,23 +87,10 @@ public static class InstallationsExtensions
             var resource = factoryContext.Resource;
             var logger = factoryContext.PipelineContext.Logger;
 
-            if (!resource.TryGetLastAnnotation<ExecutableAnnotation>(out var execAnnotation) || string.IsNullOrEmpty(execAnnotation.WorkingDirectory))
-            {
-                logger.LogWarning("Could not find working directory for {resourceName}", resource.Name);
-                throw new InvalidOperationException($"Could not find working directory for {resource.Name}");
-            }
-                
-            var frontendDir = execAnnotation.WorkingDirectory;
-            string packageManager = "npm";
-            if (resource.TryGetLastAnnotation<JavaScriptPackageManagerAnnotation>(out var packageManagerAnnotation))
-            {
-                packageManager = packageManagerAnnotation.ExecutableName;
-            }
-
             return new PipelineStep
                 {
                     Name = $"install-{resource.Name}",
-                    Action = async (ctx) => await LintingExtensions.RunProcess(packageManager, "install", frontendDir, logger),
+                    Action = async (ctx) => await LintingExtensions.RunProcess(resource.PackageManager, "install", resource.WorkingDirectory, logger),
                     RequiredBySteps = ["install"]
                 };
         });
@@ -129,13 +121,8 @@ public static class LintingExtensions
         {
             var logger = factoryContext.PipelineContext.Logger;            
             var resource = factoryContext.Resource;
-            if (!resource.TryGetLastAnnotation<ExecutableAnnotation>(out var execAnnotation) || string.IsNullOrEmpty(execAnnotation.WorkingDirectory))
-            {
-                logger?.LogWarning("Could not find working directory for {resourceName}", resource.Name);
-                throw new InvalidOperationException($"Could not find working directory for {resource.Name}");
-            }
         
-            var appDir = execAnnotation.WorkingDirectory;
+            var appDir = resource.WorkingDirectory;
             return Task.FromResult<IEnumerable<PipelineStep>>([
                 new PipelineStep
                 {
@@ -162,20 +149,10 @@ public static class LintingExtensions
         return builder.WithPipelineStepFactory(factoryContext =>
         {
             var logger = factoryContext.PipelineContext.Logger;
-            var resource = factoryContext.Resource;
-
-            if (!resource.TryGetLastAnnotation<ExecutableAnnotation>(out var execAnnotation) || string.IsNullOrEmpty(execAnnotation.WorkingDirectory))
-            {
-                logger.LogWarning("Could not find working directory for {resourceName}", resource.Name);
-                throw new InvalidOperationException($"Could not find working directory for {resource.Name}");
-            }
+            var resource = factoryContext.Resource; // this is no longer a JavaScriptAppResource in pipeline execution.
                 
-            var frontendDir = execAnnotation.WorkingDirectory;
-            string packageManager = "npm";
-            if (resource.TryGetLastAnnotation<JavaScriptPackageManagerAnnotation>(out var packageManagerAnnotation))
-            {
-                packageManager = packageManagerAnnotation.ExecutableName;
-            }
+            var frontendDir = resource.WorkingDirectory;
+            string packageManager = resource.PackageManager;
             return new PipelineStep
             {
                 Name = $"lint-{resource.Name}",
@@ -257,6 +234,80 @@ public static class LintingExtensions
         if (proc.ExitCode != 0)
         {
             throw new Exception($"Process '{fileName} {args}' failed with exit code {proc.ExitCode}");
+        }
+    }
+}
+
+public static class TestingExtensions
+{
+    public static IDistributedApplicationBuilder WithTesting(this IDistributedApplicationBuilder builder)
+    {
+        builder.Pipeline.AddStep("test", context =>
+        {
+            context.Logger.LogInformation("Testing finished successfully.");
+            return Task.CompletedTask;
+        });
+        return builder;
+    }
+
+    public static IResourceBuilder<PythonAppResource> WithUvTestingStep(this IResourceBuilder<PythonAppResource> builder, IEnumerable<(string name, string command, List<string> args)> testingCommands)
+    {
+        return builder.WithPipelineStepFactory(factoryContext =>
+        {
+            var logger = factoryContext.PipelineContext.Logger;            
+            var resource = factoryContext.Resource;
+        
+            var appDir = resource.WorkingDirectory;
+            return Task.FromResult<IEnumerable<PipelineStep>>([
+                new PipelineStep
+                {
+                    Name = $"test-{resource.Name}",
+                    Action = async (ctx) =>
+                    {
+                        logger.LogInformation("Testing for {resourceName} completed successfully", resource.Name);
+                    },
+                    RequiredBySteps = ["test"]
+                },
+                ..testingCommands.Select(testCommand =>
+                new PipelineStep
+                {
+                    Name = $"test-{testCommand.name}-{resource.Name}",
+                    Action = async (ctx) => await LintingExtensions.RunProcess("uv", string.Join(" ", ["run", testCommand.command, ..testCommand.args]), appDir, logger),
+                    DependsOnSteps = [$"install-{resource.Name}"],
+                    RequiredBySteps = [$"test-{resource.Name}"]
+                })
+            ]);
+        });
+    }
+}
+
+internal static class ResourceExtensions
+{
+    extension(IResource resource)
+    {
+        /// Get Working Directory from ExecutableAnnotation
+        public string WorkingDirectory
+        {
+            get 
+            {
+                if (resource.TryGetLastAnnotation<ExecutableAnnotation>(out var execAnnotation))
+                {
+                    return execAnnotation.WorkingDirectory;
+                }
+                throw new InvalidOperationException($"Could not find working directory for {resource.Name}");
+            }
+        }
+
+        public string PackageManager
+        {
+            get 
+            {
+                if (resource.TryGetLastAnnotation<JavaScriptPackageManagerAnnotation>(out var packageManagerAnnotation))
+                {
+                    return packageManagerAnnotation.ExecutableName;
+                }
+                throw new InvalidOperationException($"Could not find package manager for {resource.Name}");
+            }
         }
     }
 }
